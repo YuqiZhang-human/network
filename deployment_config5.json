@@ -1,0 +1,34 @@
+
+{
+    "node_settings": {
+        "node_count": 4,
+        "computation_capacity": [
+            [600, 900],
+            [600, 900],
+            [600, 900],
+            [600, 900]
+        ]
+    },
+    "function_settings": {
+        "resource_demands": [
+            [200, 300],
+            [200, 300],
+            [200, 300]
+        ],
+        "data_sizes": [100, 150]
+    },
+    "network_settings": {
+        "bandwidth_matrix": [
+            [0, 200, 500, 300],
+            [200, 0, 800, 400],
+            [500, 800, 0, 1000],
+            [300, 400, 1000, 0]
+        ]
+    },
+    "cost_settings": {
+        "gpu_cost": 0.25,
+        "memory_cost": 0.08,
+        "bandwidth_cost": 0.01,
+        "profit_per_user": 500
+    }
+}
