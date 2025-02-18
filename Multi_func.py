@@ -53,11 +53,12 @@ class EnhancedTreeNode:
 
 
 class EnhancedDeploymentOptimizer:
-    def __init__(self, config_file):
+    def __init__(self, config_file, visualize=True):
         self.load_config(config_file)
         self.node_counter = 1
         self.best_profit = -float('inf')
         self.best_node = None
+        self.visualize = visualize  # 控制是否显示可视化
 
     def load_config(self, config_file):
         with open(config_file) as f:
@@ -72,14 +73,12 @@ class EnhancedDeploymentOptimizer:
 
     def calculate_u_max(self, deployment_plan):
         """基于初始资源计算最大用户量"""
-        # 统计每个节点的总资源需求
         node_demands = defaultdict(lambda: [0, 0])
         for func_idx, node_id in deployment_plan:
             req_gpu, req_mem = self.function_demands[func_idx]
             node_demands[node_id][0] += req_gpu
             node_demands[node_id][1] += req_mem
 
-        # 计算计算资源限制
         comp_limits = []
         for node_id, (total_gpu, total_mem) in self.total_resources.items():
             demand_gpu, demand_mem = node_demands.get(node_id, [0, 0])
@@ -109,7 +108,6 @@ class EnhancedDeploymentOptimizer:
                     bw_limit = bw // data_size
                 bw_limits.append(bw_limit)
 
-        # 综合计算
         u_max = min(comp_limits) if comp_limits else 0
         if bw_limits:
             u_max = min(u_max, min(bw_limits))
@@ -143,9 +141,9 @@ class EnhancedDeploymentOptimizer:
 
                 # 统计该节点已部署功能的总需求
                 used_gpu = sum(self.function_demands[func_idx][0] for func_idx, n_id in current_node.deployment_plan if
-                              n_id == node_id)
+                               n_id == node_id)
                 used_mem = sum(self.function_demands[func_idx][1] for func_idx, n_id in current_node.deployment_plan if
-                              n_id == node_id)
+                               n_id == node_id)
 
                 # 新增当前功能的资源需求（用户量1）
                 new_used_gpu = used_gpu + req_gpu * 1
@@ -186,12 +184,17 @@ class EnhancedDeploymentOptimizer:
         else:
             print("没有找到可行方案")
 
-        self.visualize_tree(root)
+        # 根据 visualize 参数控制是否生成可视化
+        if self.visualize:
+            self.visualize_tree(root)
 
     def evaluate_final_plan(self, node):
         """评估完整方案"""
         if not node.is_valid:
             return
+
+        # 输出当前节点的部署方案
+        print(f"方案 {node.node_id - 20} 的部署方案: {node.deployment_plan}")
 
         # 计算最终成本
         node.total_cost = self.calculate_total_cost(node.deployment_plan, node.U_max)
@@ -248,7 +251,6 @@ class EnhancedDeploymentOptimizer:
         net = Network(directed=True, height="800px", width="100%")
 
         def add_nodes(node):
-            # 节点标签
             label = [
                 f"NodeID: {node.node_id}",
                 f"PhysNode: {node.value}",
@@ -258,17 +260,11 @@ class EnhancedDeploymentOptimizer:
             if node.level == len(self.function_demands) - 1:
                 label.append(f"Profit: {node.final_profit:.2f}$")
 
-            # 节点颜色
-            if not node.is_valid:
-                color = "#CCCCCC"  # 灰色表示无效
-            elif node == self.best_node:
-                color = "#00FF00"  # 绿色表示最优
-            else:
-                color = "#1f78b4"  # 蓝色表示普通
+            color = "#CCCCCC" if not node.is_valid else \
+                "#00FF00" if node == self.best_node else "#1f78b4"
 
             net.add_node(node.node_id, label="\n".join(label), color=color)
 
-            # 仅递归有效节点
             if node.is_valid:
                 for child in node.children:
                     edge_label = f"Deploy F{child.level}→N{child.value}"
@@ -281,5 +277,6 @@ class EnhancedDeploymentOptimizer:
 
 # 主程序
 if __name__ == "__main__":
-    optimizer = EnhancedDeploymentOptimizer("deployment_config5.json")
+    # 控制是否开启可视化
+    optimizer = EnhancedDeploymentOptimizer("deployment_config6.json", visualize=False)
     optimizer.build_optimization_tree()
