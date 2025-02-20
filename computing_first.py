@@ -1,21 +1,54 @@
-import json
+import ast
 from collections import defaultdict
-
+import pandas as pd
 
 class ComputeFirstDeploymentOptimizer:
-    def __init__(self, config_file):
-        self.load_config(config_file)
+    def __init__(self, config_data):
+        self.load_config(config_data)
+        self.cost_params = None
+        self.bandwidth_matrix = None
+        self.data_sizes = None
+        self.function_demands = None
+        self.total_resources = None
+        self.physical_nodes = None
+        self.config = None
+        self.node_counter = 1
+        self.best_profit = -float('inf')
+        self.best_node = None
+        self.max_user_node = None
+        self.min_cost_node = None
+        self.all_solutions = []
+        self.test_result_id = config_data.get('test_data_id', 1)  # 存储测试ID
 
-    def load_config(self, config_file):
-        with open(config_file) as f:
-            self.config = json.load(f)
-        self.physical_nodes = list(range(1, self.config["node_settings"]["node_count"] + 1))
-        self.total_resources = {n: self.config["node_settings"]["computation_capacity"][n - 1] for n in
-                                self.physical_nodes}
-        self.function_demands = self.config["function_settings"]["resource_demands"]
-        self.data_sizes = self.config["function_settings"]["data_sizes"]
-        self.bandwidth_matrix = self.config["network_settings"]["bandwidth_matrix"]
-        self.cost_params = self.config["cost_settings"]
+
+    def load_config(self, config_data):
+        try:
+            config = {
+                "node_count": int(config_data.get("node_count", 0)),
+                "computation_capacity": ast.literal_eval(config_data.get("computation_capacity", "[]")),
+                "resource_demands": ast.literal_eval(config_data.get("resource_demands", "[]")),
+                "bandwidth_matrix": ast.literal_eval(config_data.get("bandwidth_matrix", "[]")),
+                "data_sizes": list(map(float, ast.literal_eval(config_data.get("data_sizes", "[]")))),
+                "gpu_cost": float(config_data.get("gpu_cost", 0)),
+                "memory_cost": float(config_data.get("memory_cost", 0)),
+                "bandwidth_cost": float(config_data.get("bandwidth_cost", 0)),
+                "profit_per_user": float(config_data.get("profit_per_user", 0))
+            }
+        except Exception as e:
+            raise ValueError(f"配置文件解析失败: {e}")
+
+        self.config = config
+        self.physical_nodes = list(range(1, config["node_count"] + 1))
+        self.total_resources = {n: config["computation_capacity"][n - 1] for n in self.physical_nodes}
+        self.function_demands = config["resource_demands"]
+        self.data_sizes = config["data_sizes"]
+        self.bandwidth_matrix = config["bandwidth_matrix"]
+        self.cost_params = {
+            "gpu_cost": config["gpu_cost"],
+            "memory_cost": config["memory_cost"],
+            "bandwidth_cost": config["bandwidth_cost"],
+            "profit_per_user": config["profit_per_user"]
+        }
 
     def calculate_u_max(self, deployment_plan):
         """基于初始资源计算最大用户量"""
@@ -111,6 +144,7 @@ class ComputeFirstDeploymentOptimizer:
         profit = U_max * self.cost_params["profit_per_user"] - cost
         print(f"最终利润: {profit:.2f}$")
 
+
         return {
             'deployment_plan': plan,
             'U_max': U_max,
@@ -125,11 +159,30 @@ class ComputeFirstDeploymentOptimizer:
         print(f"总成本: {plan['total_cost']:.2f}$")
         print(f"最终利润: {plan['profit']:.2f}$")
 
+    def update_computing_first_node(self):
+        compute_plan = optimizer.compute_first_deployment()
+        if compute_plan:
+            optimizer.print_plan(compute_plan)
+            # 构造目标格式的列表并存储
+            node_computing_first_info = [
+                compute_plan['total_cost'],
+                compute_plan['profit'],
+                compute_plan['U_max'],
+                compute_plan['deployment_plan']
+            ]
+            print("node_computing_first_info:", node_computing_first_info)
+        else:
+            print("未找到有效方案")
+        return node_computing_first_info
+
 
 if __name__ == "__main__":
-    optimizer = ComputeFirstDeploymentOptimizer("deployment_config.json")
-    compute_plan = optimizer.compute_first_deployment()
-    if compute_plan:
-        optimizer.print_plan(compute_plan)
-    else:
-        print("未找到有效方案")
+    test_data = pd.read_csv("test_data.csv")
+    for _, row in test_data.iterrows():
+        try:
+            print(f"正在处理测试用例 {row['test_data_id']}")
+            optimizer = ComputeFirstDeploymentOptimizer(config_data=row.to_dict())
+            optimizer.update_computing_first_node()
+            print(f"测试用例 {row['test_data_id']} 处理成功\n")
+        except Exception as e:
+            print(f"用例 {row['test_data_id']} 处理失败: {str(e)}\n")
