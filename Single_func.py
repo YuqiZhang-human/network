@@ -48,10 +48,10 @@ class TreeNode:
 
 
 class DeploymentOptimizer:
-    def __init__(self, config_file):
+    def __init__(self, config_file,visualize=False):
         self.load_config(config_file)
         self.node_counter = 1  # 给TreeNode分配ID
-
+        self.visualize = visualize
         # 全局最优
         self.best_profit = -float('inf')
         self.best_node = None
@@ -312,7 +312,9 @@ class DeploymentOptimizer:
             print("No valid deployment found")
 
         # 最后可视化
-        self.visualize_tree(root, self.best_node)
+        # 根据 visualize 参数控制是否生成可视化
+        if self.visualize:
+            self.visualize_tree(root)
 
     # -------------------------------------------------------------------------
     #  5) 可视化
@@ -396,5 +398,5 @@ class DeploymentOptimizer:
 
 # ================ 主程序入口 =================
 if __name__ == "__main__":
-    optimizer = DeploymentOptimizer("deployment_config6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       .json")
+    optimizer = DeploymentOptimizer("deployment_config6.json", visualize=False)
     optimizer.build_optimization_tree()

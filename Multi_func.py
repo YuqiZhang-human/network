@@ -58,6 +58,8 @@ class EnhancedDeploymentOptimizer:
         self.node_counter = 1
         self.best_profit = -float('inf')
         self.best_node = None
+        self.max_user_node=None
+        self.min_cost_node=None
         self.visualize = visualize  # 控制是否显示可视化
 
     def load_config(self, config_file):
@@ -128,6 +130,10 @@ class EnhancedDeploymentOptimizer:
                 current_node.is_valid = current_node.U_max >= 1
                 if current_node.is_valid:
                     self.evaluate_final_plan(current_node)
+                #更新用户量最大的可用节点
+                self.update_max_user_node(current_node)
+                #更新成本最低的可用节点
+                self.update_min_cost_node(current_node)
                 continue
 
             # 处理下一层功能
@@ -205,6 +211,59 @@ class EnhancedDeploymentOptimizer:
             self.best_profit = node.final_profit
             self.best_node = node
 
+        # 更新最大用户量方案
+        self.update_max_user_node(node)
+
+    def update_max_user_node(self, node):
+        """更新最大用户量的节点"""
+        if self.max_user_node is None or node.U_max > self.max_user_node.U_max:
+            self.max_user_node = node
+
+    def update_min_cost_node(self, node):
+        """更新成本最低的节点"""
+        if self.min_cost_node is None or node.total_cost < self.min_cost_node.total_cost:
+            self.min_cost_node = node
+
+    def print_max_user_plan(self):
+        """打印最大用户量的部署方案"""
+        if self.max_user_node:
+            print("\n===== 用户量最大部署方案 =====")
+            print(f"部署方案: {self.max_user_node.deployment_plan}")
+            print(f"最大用户量: {self.max_user_node.U_max}")
+            print(f"总成本: {self.max_user_node.total_cost:.2f}$")
+            print(f"最终利润: {self.max_user_node.final_profit:.2f}$\n")
+
+            # 输出资源消耗详情
+            print("资源消耗详情:")
+            actual_resources = self.max_user_node.get_actual_resources(self.max_user_node.U_max)
+            for node_id in actual_resources:
+                total_gpu, total_mem = self.total_resources[node_id]
+                used_gpu = total_gpu - actual_resources[node_id][0]
+                used_mem = total_mem - actual_resources[node_id][1]
+                print(f"节点{node_id}: {used_gpu}/{total_gpu} GPU | {used_mem}/{total_mem} MEM")
+        else:
+            print("没有找到最大用户量的部署方案")
+
+    def print_min_cost_plan(self):
+        """打印成本最低的部署方案"""
+        if self.min_cost_node:
+            print("\n===== 成本最低部署方案 =====")
+            print(f"部署方案: {self.min_cost_node.deployment_plan}")
+            print(f"最大用户量: {self.min_cost_node.U_max}")
+            print(f"总成本: {self.min_cost_node.total_cost:.2f}$")
+            print(f"最终利润: {self.min_cost_node.final_profit:.2f}$\n")
+
+            # 输出资源消耗详情
+            print("资源消耗详情:")
+            actual_resources = self.min_cost_node.get_actual_resources(self.min_cost_node.U_max)
+            for node_id in actual_resources:
+                total_gpu, total_mem = self.total_resources[node_id]
+                used_gpu = total_gpu - actual_resources[node_id][0]
+                used_mem = total_mem - actual_resources[node_id][1]
+                print(f"节点{node_id}: {used_gpu}/{total_gpu} GPU | {used_mem}/{total_mem} MEM")
+        else:
+            print("没有找到成本最低的部署方案")
+
     def calculate_total_cost(self, deployment_plan, U_max):
         """精确成本计算"""
         # 计算资源成本
@@ -246,6 +305,8 @@ class EnhancedDeploymentOptimizer:
             used_mem = total_mem - actual_resources[node_id][1]
             print(f"节点{node_id}: {used_gpu}/{total_gpu} GPU | {used_mem}/{total_mem} MEM")
 
+
+
     def visualize_tree(self, root):
         """可视化树结构"""
         net = Network(directed=True, height="800px", width="100%")
@@ -257,6 +318,7 @@ class EnhancedDeploymentOptimizer:
                 f"Valid: {node.is_valid}",
                 f"U_max: {node.U_max if node.level >= 0 else 'N/A'}"
             ]
+            print(f"U_max: {node.U_max}")
             if node.level == len(self.function_demands) - 1:
                 label.append(f"Profit: {node.final_profit:.2f}$")
 
@@ -278,5 +340,7 @@ class EnhancedDeploymentOptimizer:
 # 主程序
 if __name__ == "__main__":
     # 控制是否开启可视化
-    optimizer = EnhancedDeploymentOptimizer("deployment_config6.json", visualize=False)
+    optimizer = EnhancedDeploymentOptimizer("deployment_config1.json", visualize=True)
     optimizer.build_optimization_tree()
+    optimizer.print_max_user_plan()
+    optimizer.print_min_cost_plan()
