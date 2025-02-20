@@ -5,6 +5,7 @@ from pyvis.network import Network
 from collections import deque, defaultdict
 from copy import deepcopy
 from colorama import init
+import os
 
 # 初始化颜色输出
 init(autoreset=True)
@@ -55,7 +56,7 @@ class EnhancedTreeNode:
 
 
 class EnhancedDeploymentOptimizer:
-    def __init__(self, config_file, visualize=True):
+    def __init__(self, config_data, visualize=True):
         self.cost_params = None
         self.bw_matrix = None
         self.data_sizes = None
@@ -63,41 +64,70 @@ class EnhancedDeploymentOptimizer:
         self.total_resources = None
         self.physical_nodes = None
         self.config = None
-        self.load_config(config_file)
+        self.load_config(config_data)
         self.node_counter = 1
         self.best_profit = -float('inf')
         self.best_node = None
         self.max_user_node=None
         self.min_cost_node=None
+        self.all_solutions = []
         self.visualize = visualize  # 控制是否显示可视化
+        self.test_result_id = config_data.get('test_data_id', 1)  # 存储测试ID
 
-    def load_config(self, config_file):
-        # 读取配置文件
-        df = pd.read_csv(config_file)
-        config = df.iloc[0].to_dict()  # 假设配置数据在第一行
+    def load_config(self, config_data):
+        # # 读取配置文件
+        # df = pd.read_csv(config_data)
+        # config = df.iloc[0].to_dict()  # 假设配置数据在第一行
+        #
+        # # 将字符串表示的列表转换为实际的列表
+        # config["computation_capacity"] = ast.literal_eval(config["computation_capacity"])
+        # config["resource_demands"] = ast.literal_eval(config["resource_demands"])
+        # config["bandwidth_matrix"] = ast.literal_eval(config["bandwidth_matrix"])
+        #
+        # # 强制转换数据类型：确保每个字段的数据类型正确
+        # config["node_count"] = int(config["node_count"])  # 转换节点数量为整数
+        # config["computation_capacity"] = [list(map(int, item)) for item in
+        #                                   config["computation_capacity"]]  # 确保每个元素为整数列表
+        # config["resource_demands"] = [list(map(int, item)) for item in config["resource_demands"]]  # 确保每个元素为整数列表
+        # config["bandwidth_matrix"] = [list(map(int, item)) for item in config["bandwidth_matrix"]]  # 确保带宽矩阵为整数列表
+        #
+        # # 使用 ast.literal_eval 安全地转换字符串形式的列表
+        # config["data_sizes"] = ast.literal_eval(config["data_sizes"])  # 转换为列表
+        # config["data_sizes"] = [float(item) for item in config["data_sizes"]]  # 确保每个元素为浮动类型
+        #
+        # config["gpu_cost"] = float(config["gpu_cost"])  # 转换 GPU 成本为浮动类型
+        # config["memory_cost"] = float(config["memory_cost"])  # 转换内存成本为浮动类型
+        # config["bandwidth_cost"] = float(config["bandwidth_cost"])  # 转换带宽成本为浮动类型
+        # config["profit_per_user"] = float(config["profit_per_user"])  # 转换每个用户利润为浮动类型
+        #
+        # # 将配置数据赋值给实例变量
+        # self.config = config
+        # self.physical_nodes = list(range(1, config["node_count"] + 1))
+        # self.total_resources = {n: config["computation_capacity"][n - 1] for n in self.physical_nodes}
+        # self.function_demands = config["resource_demands"]
+        # self.data_sizes = config["data_sizes"]
+        # self.bw_matrix = config["bandwidth_matrix"]
+        # self.cost_params = {
+        #     "gpu_cost": config["gpu_cost"],
+        #     "memory_cost": config["memory_cost"],
+        #     "bandwidth_cost": config["bandwidth_cost"],
+        #     "profit_per_user": config["profit_per_user"]
+        # }
+        try:
+            config = {
+                "node_count": int(config_data.get("node_count", 0)),
+                "computation_capacity": ast.literal_eval(config_data.get("computation_capacity", "[]")),
+                "resource_demands": ast.literal_eval(config_data.get("resource_demands", "[]")),
+                "bandwidth_matrix": ast.literal_eval(config_data.get("bandwidth_matrix", "[]")),
+                "data_sizes": list(map(float, ast.literal_eval(config_data.get("data_sizes", "[]")))),
+                "gpu_cost": float(config_data.get("gpu_cost", 0)),
+                "memory_cost": float(config_data.get("memory_cost", 0)),
+                "bandwidth_cost": float(config_data.get("bandwidth_cost", 0)),
+                "profit_per_user": float(config_data.get("profit_per_user", 0))
+            }
+        except Exception as e:
+            raise ValueError(f"配置文件解析失败: {e}")
 
-        # 将字符串表示的列表转换为实际的列表
-        config["computation_capacity"] = ast.literal_eval(config["computation_capacity"])
-        config["resource_demands"] = ast.literal_eval(config["resource_demands"])
-        config["bandwidth_matrix"] = ast.literal_eval(config["bandwidth_matrix"])
-
-        # 强制转换数据类型：确保每个字段的数据类型正确
-        config["node_count"] = int(config["node_count"])  # 转换节点数量为整数
-        config["computation_capacity"] = [list(map(int, item)) for item in
-                                          config["computation_capacity"]]  # 确保每个元素为整数列表
-        config["resource_demands"] = [list(map(int, item)) for item in config["resource_demands"]]  # 确保每个元素为整数列表
-        config["bandwidth_matrix"] = [list(map(int, item)) for item in config["bandwidth_matrix"]]  # 确保带宽矩阵为整数列表
-
-        # 使用 ast.literal_eval 安全地转换字符串形式的列表
-        config["data_sizes"] = ast.literal_eval(config["data_sizes"])  # 转换为列表
-        config["data_sizes"] = [float(item) for item in config["data_sizes"]]  # 确保每个元素为浮动类型
-
-        config["gpu_cost"] = float(config["gpu_cost"])  # 转换 GPU 成本为浮动类型
-        config["memory_cost"] = float(config["memory_cost"])  # 转换内存成本为浮动类型
-        config["bandwidth_cost"] = float(config["bandwidth_cost"])  # 转换带宽成本为浮动类型
-        config["profit_per_user"] = float(config["profit_per_user"])  # 转换每个用户利润为浮动类型
-
-        # 将配置数据赋值给实例变量
         self.config = config
         self.physical_nodes = list(range(1, config["node_count"] + 1))
         self.total_resources = {n: config["computation_capacity"][n - 1] for n in self.physical_nodes}
@@ -240,8 +270,9 @@ class EnhancedDeploymentOptimizer:
         node.total_cost = self.calculate_total_cost(node.deployment_plan, node.U_max)
         node.final_profit = node.U_max * self.cost_params["profit_per_user"] - node.total_cost
 
-        #输出多功能部署的完整方案 表格填充形式
+        #输出多功能部署的完整方案  将所有的部署方案合并 表格填充形式
         node_multi_func_all_solve_info = [node.total_cost, node.final_profit, node.U_max, node.deployment_plan]
+        self.all_solutions.append(node_multi_func_all_solve_info)
         print(f"node_multi_func_all_solve_info: {node_multi_func_all_solve_info}")
 
         # 更新最优解
@@ -351,7 +382,6 @@ class EnhancedDeploymentOptimizer:
         print(f"最大用户量: {node.U_max}")
         print(f"总成本: {node.total_cost:.2f}$")
         print(f"最终利润: {node.final_profit:.2f}$\n")
-
         print("资源消耗详情:")
         actual_resources = node.get_actual_resources(node.U_max)
         for node_id in actual_resources:
@@ -359,8 +389,14 @@ class EnhancedDeploymentOptimizer:
             used_gpu = total_gpu - actual_resources[node_id][0]
             used_mem = total_mem - actual_resources[node_id][1]
             print(f"节点{node_id}: {used_gpu}/{total_gpu} GPU | {used_mem}/{total_mem} MEM")
-
-
+        # 输出最大利润的部署方案和相关信息 表格填充形式
+        node_multi_func_max_profit_info = [
+            round(node.total_cost, 2),  # 将 total_cost 四舍五入为两位小数
+            round(node.final_profit, 2),  # 将 final_profit 四舍五入为两位小数
+            node.U_max,
+            node.deployment_plan
+        ]
+        print(f"node_multi_func_max_profit_info: {node_multi_func_max_profit_info}")
 
     def visualize_tree(self, root):
         """可视化树结构"""
@@ -390,11 +426,106 @@ class EnhancedDeploymentOptimizer:
         add_nodes(root)
         net.show("enhanced_tree.html", notebook=False)
 
+    def print_all_solutions(self):
+        """打印所有收集到的解"""
+        print("\n===== 所有方案 =====")
+        print(self.all_solutions)
+
+    def _format_solutions(self, solutions):
+        """格式化所有解决方案为元组列表"""
+        return [
+            [
+                round(sol[0], 2),  # 总成本
+                round(sol[1], 2),  # 最终利润
+                sol[2],  # U_max
+                sol[3]  # 部署方案
+            ] for sol in solutions
+        ]
+
+    def _format_node_info(self, node):
+        """将字典格式转换为无标签元组格式"""
+        if node is None:
+            return None
+        # 返回顺序：总成本、最终利润、最大用户量、部署方案
+        return [
+            round(node.total_cost, 2),
+            round(node.final_profit, 2),
+            node.U_max,
+            node.deployment_plan
+        ]
+
+    def export_results(self):
+        """改进的导出方法"""
+        results = {
+            'test_result_id': self.test_result_id,
+            'multi_func_all_solve': self._safe_serialize(
+                self._format_solutions(self.all_solutions)
+            ),
+            'multi_func_max_profit': self._safe_serialize(
+                self._format_node_info(self.best_node)
+            ),
+            'multi_func_max_user': self._safe_serialize(
+                self._format_node_info(self.max_user_node)
+            ),
+            'multi_func_min_cost': self._safe_serialize(
+                self._format_node_info(self.min_cost_node)
+            )
+        }
+
+        # 通过自定义序列化生成指定格式
+        output_file = 'test_solutions.csv'
+        df = pd.DataFrame([results])
+
+        # 将数据转换为目标字符串格式
+        str_columns = ['multi_func_all_solve', 'multi_func_max_profit',
+                       'multi_func_max_user', 'multi_func_min_cost']
+
+        for col in str_columns:
+            df[col] = df[col].apply(
+                lambda x: "[ " + x[1:-1].replace('"', '') + " ]"
+                if isinstance(x, str) and x.startswith('[')
+                else x
+            )
+
+        # 文件写入逻辑（与之前相同）
+        if os.path.exists(output_file):
+            existing_df = pd.read_csv(output_file)
+            existing_df = existing_df[existing_df['test_result_id'] != self.test_result_id]
+            df = pd.concat([existing_df, df], ignore_index=True)
+
+        df.to_csv(output_file, index=False)
+
+    def _safe_serialize(self, data):
+        """安全的序列化方法"""
+        if data is None:
+            return None
+        try:
+            return json.dumps(data, ensure_ascii=False) if not isinstance(data, str) else data
+        except TypeError:
+            return str(data)
 
 # 主程序
 if __name__ == "__main__":
-    # 控制是否开启可视化
-    optimizer = EnhancedDeploymentOptimizer("test_data.csv", visualize=True)
-    optimizer.build_optimization_tree()
-    optimizer.print_max_user_plan()
-    optimizer.print_min_cost_plan()
+    # # 控制是否开启可视化
+    # optimizer = EnhancedDeploymentOptimizer("test_data.csv", visualize=True)
+    # optimizer.build_optimization_tree()
+    # optimizer.print_max_user_plan()
+    # optimizer.print_min_cost_plan()
+    # optimizer.print_all_solutions()
+
+    # 从test_data.csv读取
+    test_data = pd.read_csv("test_data.csv")
+
+    # 为每一组测试数据生成结果
+    for _, row in test_data.iterrows():
+        try:
+            print(f"正在处理测试用例 {row['test_data_id']}")
+            optimizer = EnhancedDeploymentOptimizer(config_data=row.to_dict(), visualize=False)
+            optimizer.build_optimization_tree()
+            optimizer.print_max_user_plan()
+            optimizer.print_min_cost_plan()
+            optimizer.print_all_solutions()
+            optimizer.export_results()
+            print(f"测试用例 {row['test_data_id']} 处理成功\n")
+        except Exception as e:
+            print(f"用例 {row['test_data_id']} 处理失败: {str(e)}\n")

@@ -127,7 +127,7 @@ class ComputeFirstDeploymentOptimizer:
 
 
 if __name__ == "__main__":
-    optimizer = ComputeFirstDeploymentOptimizer("deployment_config6.json")
+    optimizer = ComputeFirstDeploymentOptimizer("deployment_config.json")
     compute_plan = optimizer.compute_first_deployment()
     if compute_plan:
         optimizer.print_plan(compute_plan)
