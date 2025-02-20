@@ -1,4 +1,6 @@
 import json
+import ast
+import pandas as pd
 from pyvis.network import Network
 from collections import deque, defaultdict
 from copy import deepcopy
@@ -37,23 +39,30 @@ class EnhancedTreeNode:
         self.total_cost = 0
         self.final_profit = 0
 
-    def get_actual_resources(self, U_max):
+    def get_actual_resources(self, u_max):
         """根据U_max计算实际资源消耗"""
         actual_resources = {}
-        node_count = self.config["node_settings"]["node_count"]
+        node_count = self.config["node_count"]
         for node_id in range(1, node_count + 1):
-            total_gpu, total_mem = self.config["node_settings"]["computation_capacity"][node_id - 1]
+            total_gpu, total_mem = self.config["computation_capacity"][node_id - 1]
             actual_resources[node_id] = [total_gpu, total_mem]
 
         for func_idx, node_id in self.deployment_plan:
-            req_gpu, req_mem = self.config["function_settings"]["resource_demands"][func_idx]
-            actual_resources[node_id][0] -= req_gpu * U_max
-            actual_resources[node_id][1] -= req_mem * U_max
+            req_gpu, req_mem = self.config["resource_demands"][func_idx]
+            actual_resources[node_id][0] -= req_gpu * u_max
+            actual_resources[node_id][1] -= req_mem * u_max
         return actual_resources
 
 
 class EnhancedDeploymentOptimizer:
     def __init__(self, config_file, visualize=True):
+        self.cost_params = None
+        self.bw_matrix = None
+        self.data_sizes = None
+        self.function_demands = None
+        self.total_resources = None
+        self.physical_nodes = None
+        self.config = None
         self.load_config(config_file)
         self.node_counter = 1
         self.best_profit = -float('inf')
@@ -63,15 +72,44 @@ class EnhancedDeploymentOptimizer:
         self.visualize = visualize  # 控制是否显示可视化
 
     def load_config(self, config_file):
-        with open(config_file) as f:
-            self.config = json.load(f)
-        self.physical_nodes = list(range(1, self.config["node_settings"]["node_count"] + 1))
-        self.total_resources = {n: self.config["node_settings"]["computation_capacity"][n - 1] for n in
-                                self.physical_nodes}
-        self.function_demands = self.config["function_settings"]["resource_demands"]
-        self.data_sizes = self.config["function_settings"]["data_sizes"]
-        self.bw_matrix = self.config["network_settings"]["bandwidth_matrix"]
-        self.cost_params = self.config["cost_settings"]
+        # 读取配置文件
+        df = pd.read_csv(config_file)
+        config = df.iloc[0].to_dict()  # 假设配置数据在第一行
+
+        # 将字符串表示的列表转换为实际的列表
+        config["computation_capacity"] = ast.literal_eval(config["computation_capacity"])
+        config["resource_demands"] = ast.literal_eval(config["resource_demands"])
+        config["bandwidth_matrix"] = ast.literal_eval(config["bandwidth_matrix"])
+
+        # 强制转换数据类型：确保每个字段的数据类型正确
+        config["node_count"] = int(config["node_count"])  # 转换节点数量为整数
+        config["computation_capacity"] = [list(map(int, item)) for item in
+                                          config["computation_capacity"]]  # 确保每个元素为整数列表
+        config["resource_demands"] = [list(map(int, item)) for item in config["resource_demands"]]  # 确保每个元素为整数列表
+        config["bandwidth_matrix"] = [list(map(int, item)) for item in config["bandwidth_matrix"]]  # 确保带宽矩阵为整数列表
+
+        # 使用 ast.literal_eval 安全地转换字符串形式的列表
+        config["data_sizes"] = ast.literal_eval(config["data_sizes"])  # 转换为列表
+        config["data_sizes"] = [float(item) for item in config["data_sizes"]]  # 确保每个元素为浮动类型
+
+        config["gpu_cost"] = float(config["gpu_cost"])  # 转换 GPU 成本为浮动类型
+        config["memory_cost"] = float(config["memory_cost"])  # 转换内存成本为浮动类型
+        config["bandwidth_cost"] = float(config["bandwidth_cost"])  # 转换带宽成本为浮动类型
+        config["profit_per_user"] = float(config["profit_per_user"])  # 转换每个用户利润为浮动类型
+
+        # 将配置数据赋值给实例变量
+        self.config = config
+        self.physical_nodes = list(range(1, config["node_count"] + 1))
+        self.total_resources = {n: config["computation_capacity"][n - 1] for n in self.physical_nodes}
+        self.function_demands = config["resource_demands"]
+        self.data_sizes = config["data_sizes"]
+        self.bw_matrix = config["bandwidth_matrix"]
+        self.cost_params = {
+            "gpu_cost": config["gpu_cost"],
+            "memory_cost": config["memory_cost"],
+            "bandwidth_cost": config["bandwidth_cost"],
+            "profit_per_user": config["profit_per_user"]
+        }
 
     def calculate_u_max(self, deployment_plan):
         """基于初始资源计算最大用户量"""
@@ -198,13 +236,13 @@ class EnhancedDeploymentOptimizer:
         """评估完整方案"""
         if not node.is_valid:
             return
-
-        # 输出当前节点的部署方案
-        print(f"方案 {node.node_id - 20} 的部署方案: {node.deployment_plan}")
-
         # 计算最终成本
         node.total_cost = self.calculate_total_cost(node.deployment_plan, node.U_max)
         node.final_profit = node.U_max * self.cost_params["profit_per_user"] - node.total_cost
+
+        #输出多功能部署的完整方案 表格填充形式
+        node_multi_func_all_solve_info = [node.total_cost, node.final_profit, node.U_max, node.deployment_plan]
+        print(f"node_multi_func_all_solve_info: {node_multi_func_all_solve_info}")
 
         # 更新最优解
         if node.final_profit > self.best_profit:
@@ -233,6 +271,14 @@ class EnhancedDeploymentOptimizer:
             print(f"总成本: {self.max_user_node.total_cost:.2f}$")
             print(f"最终利润: {self.max_user_node.final_profit:.2f}$\n")
 
+            # 输出最大用户量的部署方案和相关信息 表格填充形式
+            node_multi_func_max_user_info = [
+                round(self.max_user_node.total_cost, 2),  # 将 total_cost 四舍五入为两位小数
+                round(self.max_user_node.final_profit, 2),  # 将 final_profit 四舍五入为两位小数
+                self.max_user_node.U_max,
+                self.max_user_node.deployment_plan
+            ]
+            print(f"node_multi_func_max_user_info: {node_multi_func_max_user_info}")
             # 输出资源消耗详情
             print("资源消耗详情:")
             actual_resources = self.max_user_node.get_actual_resources(self.max_user_node.U_max)
@@ -252,6 +298,15 @@ class EnhancedDeploymentOptimizer:
             print(f"最大用户量: {self.min_cost_node.U_max}")
             print(f"总成本: {self.min_cost_node.total_cost:.2f}$")
             print(f"最终利润: {self.min_cost_node.final_profit:.2f}$\n")
+
+            # 输出最小成本的部署方案和相关信息 表格填充形式
+            node_multi_func_min_cost_info = [
+                round(self.min_cost_node.total_cost, 2),  # 将 total_cost 四舍五入为两位小数
+                round(self.min_cost_node.final_profit, 2),  # 将 final_profit 四舍五入为两位小数
+                self.min_cost_node.U_max,
+                self.min_cost_node.deployment_plan
+            ]
+            print(f"node_multi_func_min_cost_info: {node_multi_func_min_cost_info}")
 
             # 输出资源消耗详情
             print("资源消耗详情:")
@@ -318,7 +373,6 @@ class EnhancedDeploymentOptimizer:
                 f"Valid: {node.is_valid}",
                 f"U_max: {node.U_max if node.level >= 0 else 'N/A'}"
             ]
-            print(f"U_max: {node.U_max}")
             if node.level == len(self.function_demands) - 1:
                 label.append(f"Profit: {node.final_profit:.2f}$")
 
@@ -340,7 +394,7 @@ class EnhancedDeploymentOptimizer:
 # 主程序
 if __name__ == "__main__":
     # 控制是否开启可视化
-    optimizer = EnhancedDeploymentOptimizer("deployment_config1.json", visualize=True)
+    optimizer = EnhancedDeploymentOptimizer("test_data.csv", visualize=True)
     optimizer.build_optimization_tree()
     optimizer.print_max_user_plan()
     optimizer.print_min_cost_plan()

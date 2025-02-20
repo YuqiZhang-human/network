@@ -1,27 +1,15 @@
 {
     "node_settings": {
         "node_count": 3,
-        "computation_capacity": [
-            [500, 1000],
-            [800, 1600],
-            [1000, 2000]
-        ]
+        "computation_capacity": [ [500, 1000], [800, 1600], [1000, 2000] ]
     },
     "function_settings": {
         "function_count": 3,
-        "resource_demands": [
-            [100, 200],
-            [200, 400],
-            [300, 600]
-        ],
+        "resource_demands": [ [100, 200], [200, 400], [300, 600] ],
         "data_sizes": [50, 80]
     },
     "network_settings": {
-        "bandwidth_matrix": [
-            [0, 200, 300],
-            [200, 0, 400],
-            [300, 400, 0]
-        ]
+        "bandwidth_matrix": [ [0, 200, 300], [200, 0, 400], [300, 400, 0] ]
     },
     "cost_settings": {
         "gpu_cost": 0.2,
