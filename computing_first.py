@@ -2,53 +2,62 @@ import ast
 from collections import defaultdict
 import pandas as pd
 
+class ConfigLoader:
+    def __init__(self, config_data):
+        self.config_data = config_data
+        self.config = {}
+
+    def load(self):
+        """解析并加载配置文件"""
+        try:
+            config = {
+                "node_count": int(self.config_data.get("node_count", 0)),
+                "computation_capacity": ast.literal_eval(self.config_data.get("computation_capacity", "[]")),
+                "resource_demands": ast.literal_eval(self.config_data.get("resource_demands", "[]")),
+                "bandwidth_matrix": ast.literal_eval(self.config_data.get("bandwidth_matrix", "[]")),
+                "data_sizes": list(map(float, ast.literal_eval(self.config_data.get("data_sizes", "[]")))),
+                "gpu_cost": float(self.config_data.get("gpu_cost", 0)),
+                "memory_cost": float(self.config_data.get("memory_cost", 0)),
+                "bandwidth_cost": float(self.config_data.get("bandwidth_cost", 0)),
+                "profit_per_user": float(self.config_data.get("profit_per_user", 0))
+            }
+        except Exception as e:
+            raise ValueError(f"配置文件解析失败: {e}")
+
+        return config
+
 class ComputeFirstDeploymentOptimizer:
     def __init__(self, config_data):
-        self.load_config(config_data)
+        config_loader = ConfigLoader(config_data)
+        self.config = config_loader.load()  # 使用加载的配置
         self.cost_params = None
         self.bandwidth_matrix = None
         self.data_sizes = None
         self.function_demands = None
         self.total_resources = None
         self.physical_nodes = None
-        self.config = None
         self.node_counter = 1
         self.best_profit = -float('inf')
         self.best_node = None
         self.max_user_node = None
         self.min_cost_node = None
         self.all_solutions = []
-        self.test_result_id = config_data.get('test_data_id', 1)  # 存储测试ID
+        self.test_result_id = config_data.get('test_data_id', 1)
+        self.load_config()  # 依然调用本类的load_config进行其它初始化
 
-
-    def load_config(self, config_data):
-        try:
-            config = {
-                "node_count": int(config_data.get("node_count", 0)),
-                "computation_capacity": ast.literal_eval(config_data.get("computation_capacity", "[]")),
-                "resource_demands": ast.literal_eval(config_data.get("resource_demands", "[]")),
-                "bandwidth_matrix": ast.literal_eval(config_data.get("bandwidth_matrix", "[]")),
-                "data_sizes": list(map(float, ast.literal_eval(config_data.get("data_sizes", "[]")))),
-                "gpu_cost": float(config_data.get("gpu_cost", 0)),
-                "memory_cost": float(config_data.get("memory_cost", 0)),
-                "bandwidth_cost": float(config_data.get("bandwidth_cost", 0)),
-                "profit_per_user": float(config_data.get("profit_per_user", 0))
-            }
-        except Exception as e:
-            raise ValueError(f"配置文件解析失败: {e}")
-
-        self.config = config
-        self.physical_nodes = list(range(1, config["node_count"] + 1))
-        self.total_resources = {n: config["computation_capacity"][n - 1] for n in self.physical_nodes}
-        self.function_demands = config["resource_demands"]
-        self.data_sizes = config["data_sizes"]
-        self.bandwidth_matrix = config["bandwidth_matrix"]
+    def load_config(self):
+        self.physical_nodes = list(range(1, self.config["node_count"] + 1))
+        self.total_resources = {n: self.config["computation_capacity"][n - 1] for n in self.physical_nodes}
+        self.function_demands = self.config["resource_demands"]
+        self.data_sizes = self.config["data_sizes"]
+        self.bandwidth_matrix = self.config["bandwidth_matrix"]
         self.cost_params = {
-            "gpu_cost": config["gpu_cost"],
-            "memory_cost": config["memory_cost"],
-            "bandwidth_cost": config["bandwidth_cost"],
-            "profit_per_user": config["profit_per_user"]
+            "gpu_cost": self.config["gpu_cost"],
+            "memory_cost": self.config["memory_cost"],
+            "bandwidth_cost": self.config["bandwidth_cost"],
+            "profit_per_user": self.config["profit_per_user"]
         }
+        print(self.function_demands)
 
     def calculate_u_max(self, deployment_plan):
         """基于初始资源计算最大用户量"""
@@ -115,7 +124,7 @@ class ComputeFirstDeploymentOptimizer:
         for func_idx in range(len(self.function_demands)):
             req_gpu, req_mem = self.function_demands[func_idx]
 
-            candidates = [(node_id, self.total_resources[node_id][0] - gpu_usage[node_id]) for node_id in
+            candidates = [(node_id, self.total_resources[node_id][1] - gpu_usage[node_id]) for node_id in
                           self.physical_nodes]
             candidates = [(node_id, remaining_gpu) for node_id, remaining_gpu in candidates if remaining_gpu >= req_gpu]
 
@@ -160,7 +169,11 @@ class ComputeFirstDeploymentOptimizer:
         print(f"最终利润: {plan['profit']:.2f}$")
 
     def update_computing_first_node(self):
-        compute_plan = optimizer.compute_first_deployment()
+        print(4)
+        compute_plan = self.compute_first_deployment()
+        print(5)
+        print(compute_plan)
+        node_computing_first_info = []
         if compute_plan:
             optimizer.print_plan(compute_plan)
             # 构造目标格式的列表并存储
@@ -181,8 +194,12 @@ if __name__ == "__main__":
     for _, row in test_data.iterrows():
         try:
             print(f"正在处理测试用例 {row['test_data_id']}")
+            print(1)
             optimizer = ComputeFirstDeploymentOptimizer(config_data=row.to_dict())
+            print(optimizer.function_demands)
+            print(2)
             optimizer.update_computing_first_node()
+            print(3)
             print(f"测试用例 {row['test_data_id']} 处理成功\n")
         except Exception as e:
             print(f"用例 {row['test_data_id']} 处理失败: {str(e)}\n")
