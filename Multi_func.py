@@ -69,8 +69,9 @@ class ComputeFirstDeploymentOptimizer:
             "bandwidth_cost": self.config["bandwidth_cost"],
             "profit_per_user": self.config["profit_per_user"]
         }
+
     def calculate_u_max(self, deployment_plan):
-        """基于初始资源计算最大用户量"""
+        """基于初始资源计算最大用户量（增强版）"""
         node_demands = defaultdict(lambda: [0, 0])
         for func_idx, node_id in deployment_plan:
             req_gpu, req_mem = self.function_demands[func_idx]
@@ -78,8 +79,14 @@ class ComputeFirstDeploymentOptimizer:
             node_demands[node_id][1] += req_mem
 
         comp_limits = []
-        for node_id, (total_gpu, total_mem) in self.total_resources.items():
+        for node_id in self.physical_nodes:
+            total_gpu, total_mem = self.total_resources[node_id]
             demand_gpu, demand_mem = node_demands.get(node_id, [0, 0])
+
+            # 预检查资源是否足够
+            if demand_gpu > total_gpu or demand_mem > total_mem:
+                return 0
+
             u_gpu = total_gpu // demand_gpu if demand_gpu != 0 else float('inf')
             u_mem = total_mem // demand_mem if demand_mem != 0 else float('inf')
             comp_limits.append(min(u_gpu, u_mem))
@@ -92,6 +99,8 @@ class ComputeFirstDeploymentOptimizer:
             if from_node != to_node:
                 data_size = self.data_sizes[i - 1]
                 bw = self.bandwidth_matrix[from_node - 1][to_node - 1]
+                if bw <= 0:  # 带宽不连通直接返回0
+                    return 0
                 if data_size == 0:
                     bw_limit = float('inf')
                 else:
@@ -101,7 +110,7 @@ class ComputeFirstDeploymentOptimizer:
         u_max = min(comp_limits) if comp_limits else 0
         if bw_limits:
             u_max = min(u_max, min(bw_limits))
-        return u_max
+        return u_max if u_max >= 1 else 0
 
     def calculate_total_cost(self, deployment_plan, U_max):
         """计算总成本"""
@@ -137,48 +146,68 @@ class ComputeFirstDeploymentOptimizer:
                 compute_plan['deployment_plan']
             ]
             print("node_computing_first_info:", node_computing_first_info)
+            return node_computing_first_info
         else:
             print("未找到有效方案")
-        return node_computing_first_info
+            return None
 
     def compute_first_deployment(self):
-        """算力优先部署算法"""
+        """算力优先部署算法（增强连通性检查）"""
         gpu_usage = defaultdict(int)
         plan = []
-        print("===== 算力优先部署算法 =====")
+        print("===== 算力优先部署算法（连通性优化版） =====")
 
         for func_idx in range(len(self.function_demands)):
             req_gpu, req_mem = self.function_demands[func_idx]
 
-            candidates = [(node_id, self.total_resources[node_id][0] - gpu_usage[node_id]) for node_id in
-                          self.physical_nodes]
-            candidates = [(node_id, remaining_gpu) for node_id, remaining_gpu in candidates if remaining_gpu >= req_gpu]
+            # 生成候选节点列表
+            candidates = []
+            for node_id in self.physical_nodes:
+                # 检查算力是否足够
+                remaining_gpu = self.total_resources[node_id][0] - gpu_usage[node_id]
+                if remaining_gpu < req_gpu:
+                    continue
+
+                # 第一个节点不需要检查连通性
+                if func_idx == 0:
+                    candidates.append((node_id, remaining_gpu))
+                else:
+                    # 获取前一个节点
+                    prev_node = plan[-1][1]
+                    # 检查带宽是否可用
+                    if self.bandwidth_matrix[prev_node - 1][node_id - 1] > 0:
+                        candidates.append((node_id, remaining_gpu))
 
             if not candidates:
-                print(f"功能 {func_idx} 无法找到合适的物理节点部署！")
-                return None  # 若没有足够算力的节点，则没有可行方案
+                print(f"功能 {func_idx} 部署失败：无可用节点（算力不足或与前序节点不连通）")
+                return None
 
-            selected = max(candidates, key=lambda x: x[1])[0]
-            plan.append((func_idx, selected))
-            gpu_usage[selected] += req_gpu
+            # 选择剩余算力最大的节点
+            selected_node = max(candidates, key=lambda x: x[1])[0]
+            plan.append((func_idx, selected_node))
+            gpu_usage[selected_node] += req_gpu
 
-            print(
-                f"功能 {func_idx} 部署到节点 {selected} (剩余算力: {self.total_resources[selected][0] - gpu_usage[selected]}GPU)")
+            # 打印调试信息
+            debug_info = f"功能 {func_idx} -> 节点 {selected_node} "
+            if func_idx > 0:
+                prev_node = plan[-2][1]
+                bw = self.bandwidth_matrix[prev_node - 1][selected_node - 1]
+                debug_info += f"(带宽 {prev_node}->{selected_node}: {bw} Mbps)"
+            print(debug_info)
 
-        # 计算最大用户量、总成本、利润
+        # 最终验证路径连通性
+        if not self.validate_path_connectivity(plan):
+            print("路径存在不连通节点！")
+            return None
+
+        # 计算最终指标
         U_max = self.calculate_u_max(plan)
-        print(f"\n计算出的最大用户量 U_max: {U_max}")
-
         if U_max < 1:
-            print("此部署方案不可行，最大用户量不足！")
+            print("最终用户量不足")
             return None
 
         cost = self.calculate_total_cost(plan, U_max)
-        print(f"总成本: {cost:.2f}$")
-
         profit = U_max * self.cost_params["profit_per_user"] - cost
-        print(f"最终利润: {profit:.2f}$")
-
 
         return {
             'deployment_plan': plan,
@@ -187,12 +216,32 @@ class ComputeFirstDeploymentOptimizer:
             'profit': profit
         }
 
+    def validate_path_connectivity(self, plan):
+        """验证完整路径的连通性"""
+        for i in range(1, len(plan)):
+            from_node = plan[i - 1][1]
+            to_node = plan[i][1]
+            if from_node == to_node:
+                continue  # 同一节点跳过检查
+            if self.bandwidth_matrix[from_node - 1][to_node - 1] <= 0:
+                print(f"路径中断：节点 {from_node} 无法连接到 {to_node}")
+                return False
+        return True
+
     def print_plan(self, plan):
-        """打印部署方案"""
-        print(f"\n部署路径: {plan['deployment_plan']}")
+        """增强版部署方案打印"""
+        if not plan:
+            print("无有效部署方案")
+            return
+
+        print("\n最终部署方案：")
+        print("功能顺序 -> 节点路径：", end="")
+        path = [f"F{func}→N{node}" for func, node in plan['deployment_plan']]
+        print(" → ".join(path))
+
         print(f"最大用户量: {plan['U_max']}")
         print(f"总成本: {plan['total_cost']:.2f}$")
-        print(f"最终利润: {plan['profit']:.2f}$")
+        print(f"预期利润: {plan['profit']:.2f}$")
 
 
 class MemoryFirstDeploymentOptimizer:
@@ -238,8 +287,14 @@ class MemoryFirstDeploymentOptimizer:
             node_demands[node_id][1] += req_mem
 
         comp_limits = []
-        for node_id, (total_gpu, total_mem) in self.total_resources.items():
+        for node_id in self.physical_nodes:
+            total_gpu, total_mem = self.total_resources[node_id]
             demand_gpu, demand_mem = node_demands.get(node_id, [0, 0])
+
+            # 检查资源是否足够
+            if demand_gpu > total_gpu or demand_mem > total_mem:
+                return 0
+
             u_gpu = total_gpu // demand_gpu if demand_gpu != 0 else float('inf')
             u_mem = total_mem // demand_mem if demand_mem != 0 else float('inf')
             comp_limits.append(min(u_gpu, u_mem))
@@ -252,6 +307,8 @@ class MemoryFirstDeploymentOptimizer:
             if from_node != to_node:
                 data_size = self.data_sizes[i - 1]
                 bw = self.bandwidth_matrix[from_node - 1][to_node - 1]
+                if bw <= 0:  # 带宽不连通
+                    return 0
                 if data_size == 0:
                     bw_limit = float('inf')
                 else:
@@ -261,7 +318,7 @@ class MemoryFirstDeploymentOptimizer:
         u_max = min(comp_limits) if comp_limits else 0
         if bw_limits:
             u_max = min(u_max, min(bw_limits))
-        return u_max
+        return u_max if u_max >= 1 else 0
 
     def calculate_total_cost(self, deployment_plan, U_max):
         """计算总成本"""
@@ -286,42 +343,62 @@ class MemoryFirstDeploymentOptimizer:
         return comp_cost + comm_cost
 
     def memory_first_deployment(self):
-        """存储优先部署算法"""
+        """存储优先部署算法（带连通性检查）"""
         mem_usage = defaultdict(int)
         plan = []
-        print("===== 存储优先部署算法 =====")
+        print("===== 存储优先部署算法（连通性优化版） =====")
 
         for func_idx in range(len(self.function_demands)):
             req_gpu, req_mem = self.function_demands[func_idx]
 
-            candidates = [(node_id, self.total_resources[node_id][1] - mem_usage[node_id]) for node_id in
-                          self.physical_nodes]
-            candidates = [(node_id, remaining_mem) for node_id, remaining_mem in candidates if remaining_mem >= req_mem]
+            # 生成候选节点列表
+            candidates = []
+            for node_id in self.physical_nodes:
+                # 检查内存是否足够
+                remaining_mem = self.total_resources[node_id][1] - mem_usage[node_id]
+                if remaining_mem < req_mem:
+                    continue
+
+                # 第一个节点不需要检查连通性
+                if func_idx == 0:
+                    candidates.append((node_id, remaining_mem))
+                else:
+                    # 获取前一个节点
+                    prev_node = plan[-1][1]
+                    # 检查带宽是否可用
+                    if self.bandwidth_matrix[prev_node - 1][node_id - 1] > 0:
+                        candidates.append((node_id, remaining_mem))
 
             if not candidates:
-                print(f"功能 {func_idx} 无法找到合适的物理节点部署！")
-                return None  # 若没有足够内存的节点，则没有可行方案
+                print(f"功能 {func_idx} 部署失败：无可用节点（内存不足或与前序节点不连通）")
+                return None
 
-            selected = max(candidates, key=lambda x: x[1])[0]
-            plan.append((func_idx, selected))
-            mem_usage[selected] += req_mem
+            # 选择剩余内存最大的节点
+            selected_node = max(candidates, key=lambda x: x[1])[0]
+            plan.append((func_idx, selected_node))
+            mem_usage[selected_node] += req_mem
 
-            print(
-                f"功能 {func_idx} 部署到节点 {selected} (剩余内存: {self.total_resources[selected][1] - mem_usage[selected]}MB)")
+            # 打印调试信息
+            debug_info = f"功能 {func_idx} -> 节点 {selected_node} "
+            if func_idx > 0:
+                prev_node = plan[-2][1]
+                bw = self.bandwidth_matrix[prev_node - 1][selected_node - 1]
+                debug_info += f"(带宽 {prev_node}->{selected_node}: {bw} Mbps)"
+            print(debug_info)
 
-        # 计算最大用户量、总成本、利润
+        # 最终验证路径连通性
+        if not self.validate_path_connectivity(plan):
+            print("路径存在不连通节点！")
+            return None
+
+        # 计算最终指标
         U_max = self.calculate_u_max(plan)
-        print(f"\n计算出的最大用户量 U_max: {U_max}")
-
         if U_max < 1:
-            print("此部署方案不可行，最大用户量不足！")
+            print("最终用户量不足")
             return None
 
         cost = self.calculate_total_cost(plan, U_max)
-        print(f"总成本: {cost:.2f}$")
-
         profit = U_max * self.cost_params["profit_per_user"] - cost
-        print(f"最终利润: {profit:.2f}$")
 
         return {
             'deployment_plan': plan,
@@ -330,12 +407,32 @@ class MemoryFirstDeploymentOptimizer:
             'profit': profit
         }
 
+    def validate_path_connectivity(self, plan):
+        """验证完整路径的连通性"""
+        for i in range(1, len(plan)):
+            from_node = plan[i - 1][1]
+            to_node = plan[i][1]
+            if from_node == to_node:
+                continue
+            if self.bandwidth_matrix[from_node - 1][to_node - 1] <= 0:
+                print(f"路径中断：节点 {from_node} 无法连接到 {to_node}")
+                return False
+        return True
+
     def print_plan(self, plan):
         """打印部署方案"""
-        print(f"\n部署路径: {plan['deployment_plan']}")
+        if not plan:
+            print("无有效部署方案")
+            return
+
+        print("\n最终部署方案：")
+        print("功能顺序 -> 节点路径：", end="")
+        path = [f"F{func}→N{node}" for func, node in plan['deployment_plan']]
+        print(" → ".join(path))
+
         print(f"最大用户量: {plan['U_max']}")
         print(f"总成本: {plan['total_cost']:.2f}$")
-        print(f"最终利润: {plan['profit']:.2f}$")
+        print(f"预期利润: {plan['profit']:.2f}$")
 
     def update_memory_first_node(self):
         compute_plan = self.memory_first_deployment()
@@ -349,9 +446,10 @@ class MemoryFirstDeploymentOptimizer:
                 compute_plan['deployment_plan']
             ]
             print("node_memory_first_info:", node_memory_first_info)
+            return node_memory_first_info
         else:
             print("未找到有效方案")
-        return node_memory_first_info
+            return None
 
 
 
@@ -575,7 +673,7 @@ class EnhancedDeploymentOptimizer:
         node_multi_func_all_solve_info = [node.total_cost, node.final_profit, node.U_max, node.deployment_plan]
         self.all_solutions.append(node_multi_func_all_solve_info)
 
-        print(f"node_multi_func_all_solve_info: {node_multi_func_all_solve_info}")
+        # print(f"node_multi_func_all_solve_info: {node_multi_func_all_solve_info}")
 
         # 更新最优解
         if node.final_profit > self.best_profit:
@@ -584,16 +682,37 @@ class EnhancedDeploymentOptimizer:
 
         # 更新最大用户量方案
         self.update_max_user_node(node)
+        self.update_min_cost_node(node)
+
+    def validate_path_connectivity(self, plan):
+        """验证完整路径的连通性"""
+        for i in range(1, len(plan)):
+            from_node = plan[i - 1][1]
+            to_node = plan[i][1]
+            if from_node == to_node:
+                continue
+            if self.bandwidth_matrix[from_node - 1][to_node - 1] <= 0:
+                print(f"路径中断：节点 {from_node} 无法连接到 {to_node}")
+                return False
+        return True
 
     def update_max_user_node(self, node):
         """更新最大用户量的节点"""
-        if self.max_user_node is None or node.U_max > self.max_user_node.U_max:
-            self.max_user_node = node
+        if self.max_user_node is None or node.U_max > self.max_user_node.U_max :
+            if self.validate_path_connectivity(node.deployment_plan) :
+                self.max_user_node = node
+            else:
+                print("路径不连通")
+                return
 
     def update_min_cost_node(self, node):
         """更新成本最低的节点"""
         if self.min_cost_node is None or node.total_cost < self.min_cost_node.total_cost:
-            self.min_cost_node = node
+            if self.validate_path_connectivity(node.deployment_plan):
+                self.min_cost_node = node
+            else:
+                print("路径不连通")
+                return
 
     def print_max_user_plan(self):
         """打印最大用户量的部署方案"""
@@ -731,7 +850,7 @@ class EnhancedDeploymentOptimizer:
     def print_all_solutions(self):
         """打印所有收集到的解"""
         print("\n===== 所有方案 =====")
-        print(self.all_solutions)
+        # print(self.all_solutions)
 
     def _format_solutions(self, solutions):
         """格式化所有解决方案为元组列表"""
@@ -761,9 +880,6 @@ class EnhancedDeploymentOptimizer:
 
         results = {
             'test_result_id': self.test_result_id,
-            'multi_func_all_solve': self._safe_serialize(
-                self._format_solutions(self.all_solutions)
-            ),
             'multi_func_max_profit': self._safe_serialize(
                 self._format_node_info(self.best_node)
             ),
@@ -786,7 +902,7 @@ class EnhancedDeploymentOptimizer:
         df = pd.DataFrame([results])
 
         # 将数据转换为目标字符串格式
-        str_columns = ['multi_func_all_solve', 'multi_func_max_profit',
+        str_columns = ['multi_func_max_profit',
                        'multi_func_max_user', 'multi_func_min_cost',
                        'multi_func_compute_first','multi_func_memory_first']
 
@@ -820,7 +936,7 @@ class EnhancedDeploymentOptimizer:
 # 主程序
 if __name__ == "__main__":
 
-    test_data = pd.read_csv("test_data.csv")
+    test_data = pd.read_csv("indepent_pricing_data.csv")
 
     # 为每一组测试数据生成结果
     for _, row in test_data.iterrows():

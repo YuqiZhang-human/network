@@ -9,7 +9,7 @@
         "data_sizes": [50, 80]
     },
     "network_settings": {
-        "bandwidth_matrix": [ [0, 200, 300], [200, 0, 400], [300, 400, 0] ]
+        "bandwidth_matrix": [ [0, 200, 300], [200, 0, 0], [300, 0, 0] ]
     },
     "cost_settings": {
         "gpu_cost": 0.2,
