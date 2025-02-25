@@ -670,8 +670,8 @@ class EnhancedDeploymentOptimizer:
         node.final_profit = node.U_max * self.cost_params["profit_per_user"] - node.total_cost
 
         #输出多功能部署的完整方案  将所有的部署方案合并 表格填充形式
-        node_multi_func_all_solve_info = [node.total_cost, node.final_profit, node.U_max, node.deployment_plan]
-        self.all_solutions.append(node_multi_func_all_solve_info)
+        # node_multi_func_all_solve_info = [node.total_cost, node.final_profit, node.U_max, node.deployment_plan]
+        # self.all_solutions.append(node_multi_func_all_solve_info)
 
         # print(f"node_multi_func_all_solve_info: {node_multi_func_all_solve_info}")
 
@@ -898,7 +898,7 @@ class EnhancedDeploymentOptimizer:
         }
 
         # 通过自定义序列化生成指定格式
-        output_file = 'test_solutions.csv'
+        output_file = 'test_solution_modified.csv'
         df = pd.DataFrame([results])
 
         # 将数据转换为目标字符串格式
