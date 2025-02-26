@@ -21,7 +21,7 @@ def generate_test_data(n_samples: int, output_file: str):
             # =======================
             # 节点数量生成（增强小规模样本）
             # =======================
-            function_count = random.randint(4, 7)
+            function_count = random.randint(2, 5)
             node_options = [
                 function_count + random.randint(1, 3),  # 小型组网
                 function_count * 2 + random.randint(2, 5)  # 大型组网
@@ -113,4 +113,4 @@ def generate_test_data(n_samples: int, output_file: str):
 
 
 if __name__ == "__main__":
-    generate_test_data(100, '../enhanced_connectivity_data.csv')
+    generate_test_data(100, 'enhanced_connectivity_data.csv')

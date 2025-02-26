@@ -237,7 +237,7 @@ class ComputeFirstDeploymentOptimizer:
 
 
 if __name__ == "__main__":
-    test_data = pd.read_csv("test_data.csv")
+    test_data = pd.read_csv("../test_data.csv")
     for _, row in test_data.iterrows():
         try:
             print(f"正在处理测试用例 {row['test_data_id']}")

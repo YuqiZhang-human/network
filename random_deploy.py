@@ -104,7 +104,7 @@ class RandomDeploymentOptimizer:
 
 
 if __name__ == "__main__":
-    optimizer = RandomDeploymentOptimizer("deployment_config6.json")
+    optimizer = RandomDeploymentOptimizer("data/deployment_config6.json")
 
     print("===== 随机部署算法 =====")
     random_plan = optimizer.random_deployment(num_trials=1000)

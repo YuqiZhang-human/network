@@ -1,0 +1,68 @@
+=== Deployment Optimization Analysis Summary ===
+
+1. Profit Comparison Across All Algorithms
+   - See 'profit_comparison.png' for visual comparison.
+   - Average Profits: multi_func_profit: 1376.54$, compute_first: 811.67$, memory_first: 842.86$, single_func: 497.93$, random_deploy: 566.32$
+
+2. Multi Func vs Single Func Profit Comparison
+   - Cases where Single Func equals Multi Func Profit: 6 out of 98
+   - Percentage: 6.12%
+   - See 'multi_vs_single_profit.png' for details.
+
+3. Multi Func vs Single Func Time Comparison
+   - Average Time Saving by Single Func: 100.00%
+   - See 'time_comparison.png' for details.
+
+4. U_max Comparison
+   - See 'umax_comparison.png' for visual comparison.
+   - Average U_max: multi_func_profit: 4.68, compute_first: 2.71, memory_first: 2.93, single_func: 1.62, random_deploy: 1.91
+
+5. Profit vs Node Count Analysis
+   - See 'profit_vs_node_count_line.png' for line plot.
+   - Average Profit by Node Count Table saved to 'node_count_profit_table.csv'
+   - Average Profit by Node Count:
+    multi_func_profit  compute_first  memory_first  single_func  random_deploy
+4         1513.140476     904.406667   1120.897000   576.046667     604.365238
+5         1353.375333     861.434286    852.190714   697.700667     640.240000
+6         1016.489630     557.561538    652.822174   303.973846     476.138889
+7         1389.787059     860.193846    539.270000   461.709375     404.214706
+8         1771.815000    1528.045000   1443.302500  1107.566667    1411.587500
+9         1101.860000     733.930000    733.930000   367.650000     733.930000
+10        1739.086667    1213.060000   1312.883333   432.893333     934.523333
+11        2042.444000    1119.996000    960.590000   646.530000     567.828000
+12        1746.290000     317.110000    634.220000   321.180000     554.475000
+13        1865.977500     760.825000    741.417500   424.375000     418.515000
+14         816.890000     204.220000           NaN   213.860000     206.780000
+20         490.760000            NaN           NaN   168.890000     162.970000
+
+6. Profit vs Function Count Analysis
+   - See 'profit_vs_function_count_line.png' for line plot.
+   - Average Profit by Function Count Table saved to 'function_count_profit_table.csv'
+   - Average Profit by Function Count:
+   multi_func_profit  compute_first  memory_first  single_func  random_deploy
+2        2049.531852    1368.377692   1388.879200   860.864444    1002.605185
+3        1381.287600     772.586250    780.344783   419.469600     569.725200
+4        1281.229545     654.174500    583.014211   378.258636     419.358182
+5         776.826667     360.100435    512.139091   281.070000     246.632222
+
+7. U_max vs Node Count Analysis
+   - See 'umax_vs_node_count_line.png' for line plot.
+   - Average U_max by Node Count Table saved to 'node_count_umax_table.csv'
+   - Average U_max by Node Count:
+                         4         5         6         7         8    9         10        11   12    13   14   20
+multi_func_profit  5.095238  4.466667  3.814815  4.705882      4.75  3.0  6.666667       6.6  6.0   5.5  4.0  3.0
+compute_first      3.047619  2.928571  2.153846  2.692308      3.75  2.0       5.0       3.4  1.0  2.25  1.0  NaN
+memory_first            3.7       3.0  2.521739  2.066667      3.75  2.0       5.0  3.666667  2.0  2.25  NaN  NaN
+single_func        1.857143       2.2  1.153846       1.5  2.666667  1.0  1.666667       2.0  1.0  1.25  1.0  1.0
+random_deploy      2.047619  2.133333  1.666667  1.470588       3.5  2.0       4.0       1.8  2.0  1.25  1.0  1.0
+
+8. U_max vs Function Count Analysis
+   - See 'umax_vs_function_count_line.png' for line plot.
+   - Average U_max by Function Count Table saved to 'function_count_umax_table.csv'
+   - Average U_max by Function Count:
+                          2         3         4         5
+multi_func_profit  6.074074      4.76  4.772727  3.148148
+compute_first           4.0  2.708333      2.45  1.478261
+memory_first           4.08  2.956522  2.368421  2.090909
+single_func        2.407407      1.48  1.363636     1.125
+random_deploy      2.888889      1.96  1.636364  1.111111
