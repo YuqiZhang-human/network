@@ -16,7 +16,7 @@ def extract_info(info_str):
 
 def analyze_data():
     # 读取结果和输入数据
-    results = pd.read_csv('results.csv')
+    results = pd.read_csv('../../data/analysis/table/results.csv')
     input_data = pd.read_csv('../test/enhanced_connectivity_data.csv')  # 调整路径根据实际情况
     algorithms = ['multi_func_profit', 'compute_first', 'memory_first', 'single_func', 'random_deploy']
 
@@ -203,7 +203,7 @@ def analyze_data():
     func_umax_table.to_csv('function_count_umax_table.csv', index_label='Algorithm')
 
     # Generate Summary Report
-    with open('analysis_summary.txt', 'w') as f:
+    with open('../../data/analysis/analysis_summary.txt', 'w') as f:
         f.write("=== Deployment Optimization Analysis Summary ===\n\n")
 
         # 1. Profit Comparison Across All Algorithms

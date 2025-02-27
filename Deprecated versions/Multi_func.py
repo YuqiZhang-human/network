@@ -898,7 +898,7 @@ class EnhancedDeploymentOptimizer:
         }
 
         # 通过自定义序列化生成指定格式
-        output_file = '../test_solution_modified.csv'
+        output_file = 'test_solution_modified.csv'
         df = pd.DataFrame([results])
 
         # 将数据转换为目标字符串格式
@@ -936,7 +936,7 @@ class EnhancedDeploymentOptimizer:
 # 主程序
 if __name__ == "__main__":
 
-    test_data = pd.read_csv("test/enhanced_connectivity_data.csv")
+    test_data = pd.read_csv("../src/test/enhanced_connectivity_data.csv")
 
     # 为每一组测试数据生成结果
     for _, row in test_data.iterrows():

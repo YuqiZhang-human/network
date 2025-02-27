@@ -398,5 +398,5 @@ class DeploymentOptimizer:
 
 # ================ 主程序入口 =================
 if __name__ == "__main__":
-    optimizer = DeploymentOptimizer("data/deployment_config.json", visualize=True)
+    optimizer = DeploymentOptimizer("../data/resource_json/deployment_config.json", visualize=True)
     optimizer.build_optimization_tree()
