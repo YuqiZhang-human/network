@@ -24,7 +24,7 @@ def generate_test_data(n_samples: int, output_file: str):
             function_count = random.randint(2, 5)
             node_options = [
                 function_count + random.randint(1, 3),  # 小型组网
-                function_count * 2 + random.randint(2, 5)  # 大型组网
+                function_count * 2 + random.randint(2, 6)  # 大型组网
             ]
             node_count = random.choices(
                 node_options,
@@ -78,7 +78,7 @@ def generate_test_data(n_samples: int, output_file: str):
             gpu_cost = round(random.uniform(0.1, 0.6), 3)  # GPU算力成本 ($/TFLOPS-hour)
             memory_cost = round(random.uniform(0.05, 0.15), 2)  # 内存成本 ($/GB-hour)
             bandwidth_cost = round(random.uniform(0.01, 0.08), 2)  # 带宽传输成本 ($/GB)
-            profit_per_user = random.randint(200, 500)  # 用户价值参数 ($)
+            profit_per_user = random.randint(50, 100)  # 用户价值参数 ($)
 
             # =======================
             # 函数需求生成（优化指数增长公式）

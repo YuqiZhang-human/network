@@ -1,7 +1,7 @@
 import pandas as pd
 import time
 from optimizers import ConfigLoader
-
+from collections import defaultdict
 
 class SingleFuncOptimizer:
     def __init__(self, config_data):
@@ -18,34 +18,77 @@ class SingleFuncOptimizer:
             "bandwidth_cost": self.config["bandwidth_cost"],
             "profit_per_user": self.config["profit_per_user"]
         }
-        self.total_gpu_demand = sum(gpu for gpu, _ in self.function_demands)
-        self.total_mem_demand = sum(mem for _, mem in self.function_demands)
 
     def single_func_deployment(self):
-        for node_id in self.physical_nodes:
+        # 确保节点数 >= 功能数
+        if len(self.physical_nodes) < len(self.function_demands):
+            return None
+
+        # 选择一组节点，每个节点部署一个功能
+        selected_nodes = self.physical_nodes[:len(self.function_demands)]
+        plan = [(i, selected_nodes[i]) for i in range(len(self.function_demands))]
+
+        # 检查资源是否足够
+        for func_idx, node_id in plan:
+            req_gpu, req_mem = self.function_demands[func_idx]
             total_gpu, total_mem = self.total_resources[node_id]
-            if self.total_gpu_demand <= total_gpu and self.total_mem_demand <= total_mem:
-                plan = [(i, node_id) for i in range(len(self.function_demands))]
-                U_max = self.calculate_u_max(plan)
-                if U_max >= 1:
-                    cost = self.calculate_total_cost(plan, U_max)
-                    profit = U_max * self.cost_params["profit_per_user"] - cost
-                    return {'deployment_plan': plan, 'U_max': U_max, 'total_cost': cost, 'profit': profit}
-        return None
+            if req_gpu > total_gpu or req_mem > total_mem:
+                return None
+
+        U_max = self.calculate_u_max(plan)
+        if U_max < 1:
+            return None
+
+        cost = self.calculate_total_cost(plan, U_max)
+        profit = U_max * self.cost_params["profit_per_user"] - cost
+        return {'deployment_plan': plan, 'U_max': U_max, 'total_cost': cost, 'profit': profit}
 
     def calculate_u_max(self, deployment_plan):
-        node_id = deployment_plan[0][1]
-        total_gpu, total_mem = self.total_resources[node_id]
-        u_gpu = total_gpu // self.total_gpu_demand
-        u_mem = total_mem // self.total_mem_demand
-        return min(u_gpu, u_mem)
+        comp_limits = []
+        for func_idx, node_id in deployment_plan:
+            req_gpu, req_mem = self.function_demands[func_idx]
+            total_gpu, total_mem = self.total_resources[node_id]
+            u_gpu = total_gpu // req_gpu if req_gpu != 0 else float('inf')
+            u_mem = total_mem // req_mem if req_mem != 0 else float('inf')
+            comp_limits.append(min(u_gpu, u_mem))
+
+        bw_limits = []
+        for i in range(1, len(deployment_plan)):
+            from_node = deployment_plan[i - 1][1]
+            to_node = deployment_plan[i][1]
+            if from_node != to_node:
+                data_size = self.data_sizes[i - 1]
+                bw = self.bandwidth_matrix[from_node - 1][to_node - 1]
+                if bw <= 0 or (data_size > 0 and bw < data_size):
+                    return 0
+                bw_limit = bw // data_size if data_size != 0 else float('inf')
+                bw_limits.append(bw_limit)
+
+        u_max = min(comp_limits) if comp_limits else 0
+        if bw_limits:
+            u_max = min(u_max, min(bw_limits))
+        return u_max if u_max >= 1 else 0
 
     def calculate_total_cost(self, deployment_plan, U_max):
-        node_id = deployment_plan[0][1]
-        gpu_cost = self.total_gpu_demand * U_max * self.cost_params["gpu_cost"]
-        mem_cost = self.total_mem_demand * U_max * self.cost_params["memory_cost"]
-        return gpu_cost + mem_cost
+        node_usage = defaultdict(lambda: [0, 0])
+        for func_idx, node_id in deployment_plan:
+            req_gpu, req_mem = self.function_demands[func_idx]
+            node_usage[node_id][0] += req_gpu * U_max
+            node_usage[node_id][1] += req_mem * U_max
 
+        comp_cost = sum(
+            used_gpu * self.cost_params["gpu_cost"] + used_mem * self.cost_params["memory_cost"]
+            for used_gpu, used_mem in node_usage.values()
+        )
+
+        comm_cost = 0
+        for i in range(1, len(deployment_plan)):
+            from_node = deployment_plan[i - 1][1]
+            to_node = deployment_plan[i][1]
+            if from_node != to_node:
+                comm_cost += self.data_sizes[i - 1] * self.cost_params["bandwidth_cost"] * U_max
+
+        return comp_cost + comm_cost
 
 def run_single_func(existing_df=None):
     test_data = pd.read_csv("../test/enhanced_connectivity_data.csv")

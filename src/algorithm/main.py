@@ -23,7 +23,7 @@ def main():
     result_df = run_random_deploy(result_df)  # 追加并合并
 
     # 写入最终结果
-    result_df.to_csv('results.csv', index=False)
+    result_df.to_csv('../../data/analysis/table/results.csv', index=False)
 
     print("Analyzing Results...")
     analyze_data()
