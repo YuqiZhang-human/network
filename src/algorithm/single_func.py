@@ -91,7 +91,7 @@ class SingleFuncOptimizer:
         return comp_cost + comm_cost
 
 def run_single_func(existing_df=None):
-    test_data = pd.read_csv("../test/enhanced_connectivity_data.csv")
+    test_data = pd.read_csv("../../data/test/test_data.csv")
     results = []
     for _, row in test_data.iterrows():
         test_id = row['test_data_id']

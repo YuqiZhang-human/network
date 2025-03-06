@@ -113,4 +113,4 @@ def generate_test_data(n_samples: int, output_file: str):
 
 
 if __name__ == "__main__":
-    generate_test_data(100, 'enhanced_connectivity_data.csv')
+    generate_test_data(1000, '../../data/test/test_data.csv')

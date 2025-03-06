@@ -15,7 +15,7 @@ def extract_info(info_str):
 def analyze_data():
     # 读取结果和输入数据
     results = pd.read_csv('../../data/analysis/table/results.csv')
-    input_data = pd.read_csv('../test/enhanced_connectivity_data.csv')
+    input_data = pd.read_csv('../../data/test/test_data.csv')
     algorithms = ['multi_func_profit', 'compute_first', 'memory_first', 'single_func', 'random_deploy', 'min_profit']
 
     # 合并数据，按 test_data_id 对齐

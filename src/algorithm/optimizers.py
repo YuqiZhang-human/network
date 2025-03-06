@@ -14,11 +14,35 @@ class ConfigLoader:
                 "resource_demands": ast.literal_eval(self.config_data.get("resource_demands", "[]")),
                 "bandwidth_matrix": ast.literal_eval(self.config_data.get("bandwidth_matrix", "[]")),
                 "data_sizes": list(map(float, ast.literal_eval(self.config_data.get("data_sizes", "[]")))),
-                "gpu_cost": float(self.config_data.get("gpu_cost", 0)),
-                "memory_cost": float(self.config_data.get("memory_cost", 0)),
-                "bandwidth_cost": float(self.config_data.get("bandwidth_cost", 0)),
-                "profit_per_user": float(self.config_data.get("profit_per_user", 0))
             }
+            
+            # 处理gpu_cost - 可能是列表或单一值
+            gpu_cost = self.config_data.get("gpu_cost", 0)
+            if isinstance(gpu_cost, str) and gpu_cost and (gpu_cost.startswith('[') and gpu_cost.endswith(']')):
+                config["gpu_cost"] = ast.literal_eval(gpu_cost)
+            else:
+                config["gpu_cost"] = float(gpu_cost)
+                
+            # 处理memory_cost - 可能是列表或单一值
+            memory_cost = self.config_data.get("memory_cost", 0)
+            if isinstance(memory_cost, str) and memory_cost and (memory_cost.startswith('[') and memory_cost.endswith(']')):
+                config["memory_cost"] = ast.literal_eval(memory_cost)
+            else:
+                config["memory_cost"] = float(memory_cost)
+                
+            # 处理bandwidth_cost - 可能是列表或单一值
+            bandwidth_cost = self.config_data.get("bandwidth_cost", 0)
+            if isinstance(bandwidth_cost, str) and bandwidth_cost and (bandwidth_cost.startswith('[') and bandwidth_cost.endswith(']')):
+                config["bandwidth_cost"] = ast.literal_eval(bandwidth_cost)
+            else:
+                config["bandwidth_cost"] = float(bandwidth_cost)
+                
+            # 处理profit_per_user - 可能是列表或单一值
+            profit_per_user = self.config_data.get("profit_per_user", 0)
+            if isinstance(profit_per_user, str) and profit_per_user and (profit_per_user.startswith('[') and profit_per_user.endswith(']')):
+                config["profit_per_user"] = ast.literal_eval(profit_per_user)
+            else:
+                config["profit_per_user"] = float(profit_per_user)
         except Exception as e:
             raise ValueError(f"Configuration parsing failed: {e}")
         return config
@@ -82,8 +106,21 @@ class ComputeFirstDeploymentOptimizer:
             node_usage[node_id][0] += req_gpu * U_max
             node_usage[node_id][1] += req_mem * U_max
 
+        # 处理成本参数，如果是列表则取第一个值
+        gpu_cost = self.cost_params["gpu_cost"]
+        if isinstance(gpu_cost, list) and len(gpu_cost) > 0:
+            gpu_cost = gpu_cost[0]
+            
+        memory_cost = self.cost_params["memory_cost"]
+        if isinstance(memory_cost, list) and len(memory_cost) > 0:
+            memory_cost = memory_cost[0]
+            
+        bandwidth_cost = self.cost_params["bandwidth_cost"]
+        if isinstance(bandwidth_cost, list) and len(bandwidth_cost) > 0:
+            bandwidth_cost = bandwidth_cost[0]
+
         comp_cost = sum(
-            used_gpu * self.cost_params["gpu_cost"] + used_mem * self.cost_params["memory_cost"]
+            used_gpu * gpu_cost + used_mem * memory_cost
             for used_gpu, used_mem in node_usage.values()
         )
 
@@ -92,7 +129,7 @@ class ComputeFirstDeploymentOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * self.cost_params["bandwidth_cost"] * U_max
+                comm_cost += self.data_sizes[i - 1] * bandwidth_cost * U_max
 
         return comm_cost + comp_cost
 
@@ -120,7 +157,13 @@ class ComputeFirstDeploymentOptimizer:
             return None
 
         total_cost = self.calculate_total_cost(plan, U_max)
-        profit = U_max * self.cost_params["profit_per_user"] - total_cost
+        
+        # 处理profit_per_user，如果是列表则取第一个值
+        profit_per_user = self.cost_params["profit_per_user"]
+        if isinstance(profit_per_user, list) and len(profit_per_user) > 0:
+            profit_per_user = profit_per_user[0]
+            
+        profit = U_max * profit_per_user - total_cost
 
         return {
             'deployment_plan': plan,
@@ -177,7 +220,13 @@ class MemoryFirstDeploymentOptimizer:
             return None
 
         total_cost = self.calculate_total_cost(plan, U_max)
-        profit = U_max * self.cost_params["profit_per_user"] - total_cost
+        
+        # 处理profit_per_user，如果是列表则取第一个值
+        profit_per_user = self.cost_params["profit_per_user"]
+        if isinstance(profit_per_user, list) and len(profit_per_user) > 0:
+            profit_per_user = profit_per_user[0]
+            
+        profit = U_max * profit_per_user - total_cost
 
         return {
             'deployment_plan': plan,
@@ -212,6 +261,10 @@ class EnhancedDeploymentOptimizer:
         self.best_node = None
         self.min_profit = float('inf')
         self.min_profit_node = None
+        self.min_cost = float('inf')
+        self.min_cost_node = None
+        self.max_users = -float('inf')
+        self.max_users_node = None
 
     def calculate_u_max(self, deployment_plan):
         """Calculate U_max for a deployment plan."""
@@ -249,15 +302,28 @@ class EnhancedDeploymentOptimizer:
         return u_max if u_max >= 1 else 0
 
     def calculate_total_cost(self, deployment_plan, U_max):
-        """Calculate the total cost for a deployment plan."""
+        """Calculate the total cost of resource usage and bandwidth."""
         node_usage = defaultdict(lambda: [0, 0])
         for func_idx, node_id in deployment_plan:
             req_gpu, req_mem = self.function_demands[func_idx]
             node_usage[node_id][0] += req_gpu * U_max
             node_usage[node_id][1] += req_mem * U_max
 
+        # 处理成本参数，如果是列表则取第一个值
+        gpu_cost = self.cost_params["gpu_cost"]
+        if isinstance(gpu_cost, list) and len(gpu_cost) > 0:
+            gpu_cost = gpu_cost[0]
+            
+        memory_cost = self.cost_params["memory_cost"]
+        if isinstance(memory_cost, list) and len(memory_cost) > 0:
+            memory_cost = memory_cost[0]
+            
+        bandwidth_cost = self.cost_params["bandwidth_cost"]
+        if isinstance(bandwidth_cost, list) and len(bandwidth_cost) > 0:
+            bandwidth_cost = bandwidth_cost[0]
+
         comp_cost = sum(
-            used_gpu * self.cost_params["gpu_cost"] + used_mem * self.cost_params["memory_cost"]
+            used_gpu * gpu_cost + used_mem * memory_cost
             for used_gpu, used_mem in node_usage.values()
         )
 
@@ -266,7 +332,7 @@ class EnhancedDeploymentOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * self.cost_params["bandwidth_cost"] * U_max
+                comm_cost += self.data_sizes[i - 1] * bandwidth_cost * U_max
 
         return comm_cost + comp_cost
 
@@ -306,13 +372,26 @@ class EnhancedDeploymentOptimizer:
                 U_max = self.calculate_u_max(current_plan)
                 if U_max >= 1:
                     total_cost = self.calculate_total_cost(current_plan, U_max)
-                    final_profit = U_max * self.cost_params["profit_per_user"] - total_cost
+                    
+                    # 处理profit_per_user，如果是列表则取第一个值
+                    profit_per_user = self.cost_params["profit_per_user"]
+                    if isinstance(profit_per_user, list) and len(profit_per_user) > 0:
+                        profit_per_user = profit_per_user[0]
+                        
+                    final_profit = U_max * profit_per_user - total_cost
+                    
                     if final_profit > self.best_profit:
                         self.best_profit = final_profit
                         self.best_node = EnhancedTreeNode(current_plan, final_profit, total_cost, U_max)
                     if final_profit < self.min_profit:
                         self.min_profit = final_profit
                         self.min_profit_node = EnhancedTreeNode(current_plan, final_profit, total_cost, U_max)
+                    if total_cost < self.min_cost:
+                        self.min_cost = total_cost
+                        self.min_cost_node = EnhancedTreeNode(current_plan, final_profit, total_cost, U_max)
+                    if U_max > self.max_users:
+                        self.max_users = U_max
+                        self.max_users_node = EnhancedTreeNode(current_plan, final_profit, total_cost, U_max)
                 continue
 
             for node_id in self.physical_nodes:
@@ -327,6 +406,14 @@ class EnhancedDeploymentOptimizer:
     def get_worst_deployment(self):
         """Return the worst deployment plan."""
         return self.min_profit_node.deployment_plan if self.min_profit_node else None
+
+    def get_min_cost_deployment(self):
+        """Return the minimum cost deployment plan."""
+        return self.min_cost_node.deployment_plan if self.min_cost_node else None
+
+    def get_max_users_deployment(self):
+        """Return the maximum users deployment plan."""
+        return self.max_users_node.deployment_plan if self.max_users_node else None
 
 if __name__ == "__main__":
     config_data = {
@@ -344,5 +431,9 @@ if __name__ == "__main__":
     optimizer.build_optimization_tree()
     best_plan = optimizer.get_best_deployment()
     worst_plan = optimizer.get_worst_deployment()
+    min_cost_plan = optimizer.get_min_cost_deployment()
+    max_users_plan = optimizer.get_max_users_deployment()
     print(f"Best deployment plan: {best_plan}")
     print(f"Worst deployment plan: {worst_plan}")
+    print(f"Minimum cost deployment plan: {min_cost_plan}")
+    print(f"Maximum users deployment plan: {max_users_plan}")
