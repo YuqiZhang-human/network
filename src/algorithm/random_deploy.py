@@ -14,6 +14,7 @@ class RandomDeploymentOptimizer:
         self.function_demands = self.config["resource_demands"]
         self.data_sizes = self.config["data_sizes"]
         self.bandwidth_matrix = self.config["bandwidth_matrix"]
+        self.link_weights = self.config["link_weights"]
         self.cost_params = {
             "gpu_cost": self.config["gpu_cost"],
             "memory_cost": self.config["memory_cost"],
@@ -62,15 +63,29 @@ class RandomDeploymentOptimizer:
             u_max = min(u_max, min(bw_limits))
         return u_max
 
-    def calculate_total_cost(self, deployment_plan, u_max):
+    def calculate_total_cost(self, deployment_plan, U_max):
+        """Calculate the total cost of resource usage and bandwidth."""
         node_usage = defaultdict(lambda: [0, 0])
         for func_idx, node_id in deployment_plan:
             req_gpu, req_mem = self.function_demands[func_idx]
-            node_usage[node_id][0] += req_gpu * u_max
-            node_usage[node_id][1] += req_mem * u_max
+            node_usage[node_id][0] += req_gpu * U_max
+            node_usage[node_id][1] += req_mem * U_max
+
+        # 处理成本参数，确保使用正确的值类型
+        gpu_cost = self.cost_params["gpu_cost"]
+        if isinstance(gpu_cost, list) and len(gpu_cost) > 0:
+            gpu_cost = gpu_cost[0]
+            
+        memory_cost = self.cost_params["memory_cost"]
+        if isinstance(memory_cost, list) and len(memory_cost) > 0:
+            memory_cost = memory_cost[0]
+            
+        bandwidth_cost = self.cost_params["bandwidth_cost"]
+        if isinstance(bandwidth_cost, list) and len(bandwidth_cost) > 0:
+            bandwidth_cost = bandwidth_cost[0]
 
         comp_cost = sum(
-            used_gpu * self.cost_params["gpu_cost"] + used_mem * self.cost_params["memory_cost"]
+            used_gpu * gpu_cost + used_mem * memory_cost
             for used_gpu, used_mem in node_usage.values()
         )
 
@@ -79,9 +94,13 @@ class RandomDeploymentOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * self.cost_params["bandwidth_cost"] * u_max
+                # 考虑链路权重：带宽开销 = 带宽需求 * 链路权重 * 链路连通性 * 带宽价格
+                data_size = self.data_sizes[i - 1]
+                link_weight = self.link_weights[from_node - 1][to_node - 1]
+                link_connectivity = 1 if self.bandwidth_matrix[from_node - 1][to_node - 1] > 0 else 0
+                comm_cost += data_size * link_weight * link_connectivity * bandwidth_cost * U_max
 
-        return comp_cost + comm_cost
+        return comm_cost + comp_cost
 
     def is_connected(self, plan):
         for i in range(1, len(plan)):

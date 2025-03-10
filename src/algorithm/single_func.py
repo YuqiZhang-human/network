@@ -12,6 +12,7 @@ class SingleFuncOptimizer:
         self.function_demands = self.config["resource_demands"]
         self.data_sizes = self.config["data_sizes"]
         self.bandwidth_matrix = self.config["bandwidth_matrix"]
+        self.link_weights = self.config["link_weights"]
         self.cost_params = {
             "gpu_cost": self.config["gpu_cost"],
             "memory_cost": self.config["memory_cost"],
@@ -86,7 +87,10 @@ class SingleFuncOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * self.cost_params["bandwidth_cost"] * U_max
+                data_size = self.data_sizes[i - 1]
+                link_weight = self.link_weights[from_node - 1][to_node - 1]
+                link_connectivity = 1 if self.bandwidth_matrix[from_node - 1][to_node - 1] > 0 else 0
+                comm_cost += data_size * link_weight * link_connectivity * self.cost_params["bandwidth_cost"] * U_max
 
         return comp_cost + comm_cost
 

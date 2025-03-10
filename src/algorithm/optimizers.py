@@ -16,6 +16,23 @@ class ConfigLoader:
                 "data_sizes": list(map(float, ast.literal_eval(self.config_data.get("data_sizes", "[]")))),
             }
             
+            # 添加链路权重参数，默认都为1.0（如果没有提供）
+            link_weights = self.config_data.get("link_weights", None)
+            if link_weights and isinstance(link_weights, str):
+                config["link_weights"] = ast.literal_eval(link_weights)
+            else:
+                # 如果没有提供链路权重，则根据bandwidth_matrix创建默认值1.0的权重矩阵
+                bandwidth_matrix = config["bandwidth_matrix"]
+                default_weights = []
+                for i in range(len(bandwidth_matrix)):
+                    row = []
+                    for j in range(len(bandwidth_matrix[i])):
+                        # 如果有带宽连接，则权重为1.0，否则为0
+                        weight = 1.0 if bandwidth_matrix[i][j] > 0 else 0.0
+                        row.append(weight)
+                    default_weights.append(row)
+                config["link_weights"] = default_weights
+            
             # 处理gpu_cost - 可能是列表或单一值
             gpu_cost = self.config_data.get("gpu_cost", 0)
             if isinstance(gpu_cost, str) and gpu_cost and (gpu_cost.startswith('[') and gpu_cost.endswith(']')):
@@ -56,6 +73,7 @@ class ComputeFirstDeploymentOptimizer:
         self.function_demands = self.config["resource_demands"]
         self.data_sizes = self.config["data_sizes"]
         self.bandwidth_matrix = self.config["bandwidth_matrix"]
+        self.link_weights = self.config["link_weights"]  # 添加链路权重参数
         self.cost_params = {
             "gpu_cost": self.config["gpu_cost"],
             "memory_cost": self.config["memory_cost"],
@@ -129,7 +147,11 @@ class ComputeFirstDeploymentOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * bandwidth_cost * U_max
+                # 考虑链路权重：带宽开销 = 带宽需求 * 链路权重 * 链路连通性 * 带宽价格
+                data_size = self.data_sizes[i - 1]
+                link_weight = self.link_weights[from_node - 1][to_node - 1]
+                link_connectivity = 1 if self.bandwidth_matrix[from_node - 1][to_node - 1] > 0 else 0
+                comm_cost += data_size * link_weight * link_connectivity * bandwidth_cost * U_max
 
         return comm_cost + comp_cost
 
@@ -181,6 +203,7 @@ class MemoryFirstDeploymentOptimizer:
         self.function_demands = self.config["resource_demands"]
         self.data_sizes = self.config["data_sizes"]
         self.bandwidth_matrix = self.config["bandwidth_matrix"]
+        self.link_weights = self.config["link_weights"]  # 添加链路权重参数
         self.cost_params = {
             "gpu_cost": self.config["gpu_cost"],
             "memory_cost": self.config["memory_cost"],
@@ -193,8 +216,43 @@ class MemoryFirstDeploymentOptimizer:
         return ComputeFirstDeploymentOptimizer.calculate_u_max(self, deployment_plan)
 
     def calculate_total_cost(self, deployment_plan, U_max):
-        """Reuse ComputeFirstDeploymentOptimizer's method."""
-        return ComputeFirstDeploymentOptimizer.calculate_total_cost(self, deployment_plan, U_max)
+        """Calculate the total cost of resource usage and bandwidth."""
+        node_usage = defaultdict(lambda: [0, 0])
+        for func_idx, node_id in deployment_plan:
+            req_gpu, req_mem = self.function_demands[func_idx]
+            node_usage[node_id][0] += req_gpu * U_max
+            node_usage[node_id][1] += req_mem * U_max
+
+        # 处理成本参数，如果是列表则取第一个值
+        gpu_cost = self.cost_params["gpu_cost"]
+        if isinstance(gpu_cost, list) and len(gpu_cost) > 0:
+            gpu_cost = gpu_cost[0]
+            
+        memory_cost = self.cost_params["memory_cost"]
+        if isinstance(memory_cost, list) and len(memory_cost) > 0:
+            memory_cost = memory_cost[0]
+            
+        bandwidth_cost = self.cost_params["bandwidth_cost"]
+        if isinstance(bandwidth_cost, list) and len(bandwidth_cost) > 0:
+            bandwidth_cost = bandwidth_cost[0]
+
+        comp_cost = sum(
+            used_gpu * gpu_cost + used_mem * memory_cost
+            for used_gpu, used_mem in node_usage.values()
+        )
+
+        comm_cost = 0
+        for i in range(1, len(deployment_plan)):
+            from_node = deployment_plan[i - 1][1]
+            to_node = deployment_plan[i][1]
+            if from_node != to_node:
+                # 考虑链路权重：带宽开销 = 带宽需求 * 链路权重 * 链路连通性 * 带宽价格
+                data_size = self.data_sizes[i - 1]
+                link_weight = self.link_weights[from_node - 1][to_node - 1]
+                link_connectivity = 1 if self.bandwidth_matrix[from_node - 1][to_node - 1] > 0 else 0
+                comm_cost += data_size * link_weight * link_connectivity * bandwidth_cost * U_max
+
+        return comm_cost + comp_cost
 
     def memory_first_deployment(self):
         """Compute deployment prioritizing memory usage."""
@@ -251,6 +309,7 @@ class EnhancedDeploymentOptimizer:
         self.function_demands = self.config["resource_demands"]
         self.data_sizes = self.config["data_sizes"]
         self.bandwidth_matrix = self.config["bandwidth_matrix"]
+        self.link_weights = self.config["link_weights"]  # 添加链路权重参数
         self.cost_params = {
             "gpu_cost": self.config["gpu_cost"],
             "memory_cost": self.config["memory_cost"],
@@ -332,7 +391,11 @@ class EnhancedDeploymentOptimizer:
             from_node = deployment_plan[i - 1][1]
             to_node = deployment_plan[i][1]
             if from_node != to_node:
-                comm_cost += self.data_sizes[i - 1] * bandwidth_cost * U_max
+                # 考虑链路权重：带宽开销 = 带宽需求 * 链路权重 * 链路连通性 * 带宽价格
+                data_size = self.data_sizes[i - 1]
+                link_weight = self.link_weights[from_node - 1][to_node - 1]
+                link_connectivity = 1 if self.bandwidth_matrix[from_node - 1][to_node - 1] > 0 else 0
+                comm_cost += data_size * link_weight * link_connectivity * bandwidth_cost * U_max
 
         return comm_cost + comp_cost
 
